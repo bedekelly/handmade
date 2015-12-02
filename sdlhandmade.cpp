@@ -1,33 +1,12 @@
 #include <iostream>
 #include <SDL.h>
-#include <stdlib.h>
+#include <cstdlib>
 #include "sdlhandmade.h"
+#include "handmade.cpp"
 
-
-typedef struct SDLOffscreenBuffer {
-  int width;
-  int height;
-  SDL_Texture *texture;
-  void *memory;
-} SDLOffscreenBuffer;
-
-
-typedef struct SDLWindowDimension {
-  int width;
-  int height;
-} SDLWindowDimension;
-
-
-typedef struct GameState {
-  int xoffset;
-  int yoffset;
-} GameState;
-
-
-void renderGradient(SDLOffscreenBuffer *buffer, int xoffset, int yoffset);
-bool handleEvent(SDL_Event *event, SDLOffscreenBuffer *buffer, GameState *gamestate);
-void SDLResizeTexture(SDLOffscreenBuffer *buffer, SDL_Renderer *renderer, int width, int height);
-void SDLUpdateWindow(SDLOffscreenBuffer *buffer, SDL_Renderer *renderer);
+bool handleEvent(SDL_Event *event, OffscreenBuffer *buffer, GameState *gamestate);
+void SDLResizeTexture(OffscreenBuffer *buffer, SDL_Renderer *renderer, int width, int height);
+void SDLUpdateWindow(OffscreenBuffer *buffer, SDL_Renderer *renderer);
 
 
 int main(int argc, char *argv[]) {
@@ -84,7 +63,7 @@ int main(int argc, char *argv[]) {
   SDL_GetWindowSize(window, &width, &height);
 
   // Create our own offscreen buffer structure.
-  SDLOffscreenBuffer buffer;
+  OffscreenBuffer buffer;
   buffer.memory = NULL;  // Otherwise it's an "invalid pointer" somehow.
 
   // Allocate a new pixel buffer and texture.
@@ -97,6 +76,8 @@ int main(int argc, char *argv[]) {
   uint64 perfCountFreq = SDL_GetPerformanceFrequency();
   uint64 lastCounter = SDL_GetPerformanceCounter();
 
+
+
   // Enter an loop inside which our program should handle events.
   bool running = true;
   while (running) {
@@ -107,7 +88,20 @@ int main(int argc, char *argv[]) {
 	break;
       }
     }
+
+    // Lock the texture for write-only access.
+    SDL_LockTexture(buffer.texture,
+		  NULL,
+		  &buffer.memory,
+		  &buffer.pitch);
+
+    // Render our gradient to the texture.
     renderGradient(&buffer, gamestate.xoffset, gamestate.yoffset);
+
+    // Unlock the texture, saving our changes.
+    SDL_UnlockTexture(buffer.texture);
+
+    // Display our changes in the current window.
     SDLUpdateWindow(&buffer, renderer);
 
     // Benchmarking:
@@ -125,43 +119,9 @@ int main(int argc, char *argv[]) {
 
 
 /*
- * Renders a gradient straight to our pixel buffer.
- */
-void renderGradient(SDLOffscreenBuffer *buffer, int xoffset, int yoffset) {
-  // Render a gradient to our bitmap memory.
-  int height = buffer->height;
-  int width = buffer->width;
-  int pitch;
-  void *lockedMemory;
-
-  // Lock the texture for write-only access.
-  SDL_LockTexture(buffer->texture,
-		  NULL,
-		  &lockedMemory,
-		  &pitch);
-
-  uint8 *row = (uint8 *)lockedMemory;
-  for (int y=0; y<height; y++) {
-    uint32 *pixel = (uint32 *)row;
-    for (int x=0; x<width; x++) {
-      uint8 blue = x + xoffset;
-      uint8 green = y + yoffset;
-      *pixel = (green << 8) | blue;
-      pixel++;
-    }
-    row += pitch;
-  }
-
-  // Apply all the changes we've made to the texture.
-  SDL_UnlockTexture(buffer->texture);
-
-}
-
-
-/*
  * Respond to all SDL events, including the signal to shut down.
  */
-bool handleEvent(SDL_Event *event, SDLOffscreenBuffer *buffer, GameState *gamestate) {
+bool handleEvent(SDL_Event *event, OffscreenBuffer *buffer, GameState *gamestate) {
   bool shouldQuit = false;
 
   switch(event->type) {
@@ -175,7 +135,9 @@ bool handleEvent(SDL_Event *event, SDLOffscreenBuffer *buffer, GameState *gamest
   case SDL_KEYUP:
     {
       SDL_Keycode keycode = event->key.keysym.sym;
-      if (keycode == SDLK_w)
+      if (keycode == SDLK_q)
+	shouldQuit = true;
+      else if (keycode == SDLK_w)
 	gamestate->yoffset++;
       else if (keycode == SDLK_s)
 	gamestate->yoffset--;
@@ -238,20 +200,15 @@ bool handleEvent(SDL_Event *event, SDLOffscreenBuffer *buffer, GameState *gamest
  * Given a height and a width, create a new texture of that size.
  * Reallocate our own pixel buffer to accomodate the new size.
  */
-void SDLResizeTexture(SDLOffscreenBuffer *buffer, SDL_Renderer *renderer, int width, int height) {
+void SDLResizeTexture(OffscreenBuffer *buffer, SDL_Renderer *renderer, int width, int height) {
   // Make a new texture of given size.
   if (buffer->texture) SDL_DestroyTexture(buffer->texture);
   buffer->texture = SDL_CreateTexture(renderer,
-			      SDL_PIXELFORMAT_ARGB8888,     // Pixel format
-			      SDL_TEXTUREACCESS_STREAMING,  // Hint for how we're using the texture
-			      width,
-			      height
-			      );
-  // Make a new pixel buffer of given size.
-  // Allocate w*h pixels of 4 (argb) bytes each.
-  if (buffer->memory) free(buffer->memory);
-  buffer->memory = malloc(width * height * 4);
-
+				      SDL_PIXELFORMAT_ARGB8888,     // Pixel format
+				      SDL_TEXTUREACCESS_STREAMING,  // Hint for how we're usinpg the texture
+				      width,
+				      height
+				      );
   // Update our global bitmap sizes with the new sizes passed in.
   buffer->width = width;
   buffer->height = height;
@@ -262,7 +219,7 @@ void SDLResizeTexture(SDLOffscreenBuffer *buffer, SDL_Renderer *renderer, int wi
  * Stretch our texture over the renderer.
  * Then display the renderer.
  */
-void SDLUpdateWindow(SDLOffscreenBuffer *buffer, SDL_Renderer *renderer) {
+void SDLUpdateWindow(OffscreenBuffer *buffer, SDL_Renderer *renderer) {
   // Stretch our texture over the renderer's entire screen.
   SDL_RenderCopy(renderer,
 		 buffer->texture,
