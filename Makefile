@@ -1,5 +1,5 @@
 COMPILER=g++
-FILENAME=main.cpp
+FILENAME=sdlhandmade.cpp
 BUILD_OUT=../build/main
 CFLAGS=`sdl2-config --cflags`
 LIBS=`sdl2-config --libs`
