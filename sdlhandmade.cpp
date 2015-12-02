@@ -93,6 +93,10 @@ int main(int argc, char *argv[]) {
   // Create a "game state" - where we are in the gradient.
   GameState gamestate = {0, 0};
 
+  // Record the current 'counter' (time) for performance analysis.
+  uint64 perfCountFreq = SDL_GetPerformanceFrequency();
+  uint64 lastCounter = SDL_GetPerformanceCounter();
+
   // Enter an loop inside which our program should handle events.
   bool running = true;
   while (running) {
@@ -105,6 +109,17 @@ int main(int argc, char *argv[]) {
     }
     renderGradient(&buffer, gamestate.xoffset, gamestate.yoffset);
     SDLUpdateWindow(&buffer, renderer);
+
+    // Benchmarking:
+    uint64 currentCounter = SDL_GetPerformanceCounter();
+    uint64 counterElapsed = currentCounter - lastCounter;
+    real64 msPerFrame = (1000.0f * (real64)counterElapsed) / (real64)perfCountFreq;
+    real64 framesPerSec = (real64)perfCountFreq / (real64)counterElapsed;
+    
+    std::cout << "Frame rendered in " << msPerFrame << "ms." << std::endl;
+    std::cout << "That's " << framesPerSec << "fps to you and me." << std::endl;
+
+    lastCounter = currentCounter;
   }
 }
 
